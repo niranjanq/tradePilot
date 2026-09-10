@@ -1,0 +1,2 @@
+[console_scripts]
+tradepilot = tradepilot.main:main
