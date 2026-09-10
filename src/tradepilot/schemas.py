@@ -20,6 +20,29 @@ class MarketSnapshot(BaseModel):
     timestamp: str | None = None
 
 
+class WalletSnapshot(BaseModel):
+    cash_available: float = Field(ge=0.0)
+    total_equity: float = Field(ge=0.0)
+    invested_value: float = Field(default=0.0, ge=0.0)
+    reserved_amount: float = Field(default=0.0, ge=0.0)
+    currency: str = "INR"
+    source: str = "paper"
+
+    @property
+    def deployable_cash(self) -> float:
+        return max(0.0, self.cash_available - self.reserved_amount)
+
+
+class AgentPlan(BaseModel):
+    node: str
+    objective: str
+    capital_available: float
+    portfolio_exposure: float = 0.0
+    inputs_considered: list[str] = Field(default_factory=list)
+    actions: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+
+
 class AgentReport(BaseModel):
     analyst: str
     signal: Signal
@@ -28,6 +51,7 @@ class AgentReport(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
+    plan: AgentPlan | None = None
 
 
 class RiskAssessment(BaseModel):
@@ -48,6 +72,7 @@ class MasterDecision(BaseModel):
     rationale: str
     missing_evidence: list[str] = Field(default_factory=list)
     targeted_questions: dict[str, list[str]] = Field(default_factory=dict)
+    plan: AgentPlan | None = None
 
 
 class TradeRecord(BaseModel):
@@ -70,11 +95,16 @@ class TradeRecord(BaseModel):
 class TradingState(TypedDict, total=False):
     cycle_id: str
     asset: str
+    # Backward-compatible alias for total equity.
     capital: float
+    wallet: WalletSnapshot
+    cash_available: float
+    portfolio_exposure: float
     market: MarketSnapshot
     memory_context: dict[str, Any]
-    # Parallel analyst branches write concurrently; LangGraph merges by dict union.
+    # Parallel analyst branches write independently; reducer merges report maps.
     reports: Annotated[dict[str, AgentReport], operator.or_]
+    planning_trace: Annotated[list[dict[str, Any]], operator.add]
     master_decision: MasterDecision
     risk_assessment: RiskAssessment
     trade: TradeRecord
