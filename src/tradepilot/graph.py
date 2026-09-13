@@ -13,6 +13,7 @@ from tradepilot.execution.paper import PaperExecutionEngine
 from tradepilot.memory.store import TradeMemory
 from tradepilot.risk.engine import validate_trade
 from tradepilot.schemas import MarketSnapshot, TradingState, WalletSnapshot
+from tradepilot.simulation import apply_paper_fill
 
 ANALYST_NODES = {
     "technical": technical_agent,
@@ -45,7 +46,6 @@ def _make_analyst_wrapper(name: str):
     fn = ANALYST_NODES[name]
 
     def wrapper(state: TradingState) -> dict:
-        # Each parallel node returns only its own report. The StateGraph reducer merges them.
         return fn(state)
 
     wrapper.__name__ = f"run_{name}_agent"
@@ -87,7 +87,32 @@ def execute_paper(state: TradingState) -> dict:
         market=state["market"], thesis=decision.rationale,
         reports=[r.model_dump() for r in state["reports"].values()], master=decision.model_dump(),
     )
-    return {"trade": trade, "execution_result": {"mode": "paper", "status": "OPEN", "trade_id": trade.trade_id}, "final_status": "EXECUTED_PAPER"}
+    current_wallet = state.get("wallet") or WalletSnapshot(
+        cash_available=float(state.get("cash_available", state.get("capital", 0.0))),
+        total_equity=float(state.get("capital", 0.0)),
+        source="paper",
+    )
+    updated_wallet = apply_paper_fill(
+        current_wallet,
+        side=trade.side,
+        price=trade.entry_price,
+        quantity=trade.quantity,
+    )
+    exposure = updated_wallet.invested_value / updated_wallet.total_equity if updated_wallet.total_equity else 0.0
+    return {
+        "trade": trade,
+        "wallet": updated_wallet,
+        "cash_available": updated_wallet.deployable_cash,
+        "portfolio_exposure": exposure,
+        "execution_result": {
+            "mode": "paper",
+            "status": "OPEN",
+            "trade_id": trade.trade_id,
+            "filled_notional": trade.entry_price * trade.quantity,
+            "remaining_cash": updated_wallet.deployable_cash,
+        },
+        "final_status": "EXECUTED_PAPER",
+    }
 
 
 def record_memory(state: TradingState) -> dict:
