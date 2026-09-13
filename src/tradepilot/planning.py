@@ -1,18 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
-from tradepilot.schemas import TradingState
-
-
-class AgentPlan(BaseModel):
-    node: str
-    objective: str
-    capital_available: float
-    portfolio_exposure: float = 0.0
-    inputs_considered: list[str] = Field(default_factory=list)
-    actions: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
+from tradepilot.schemas import AgentPlan, TradingState
 
 
 def build_plan(state: TradingState, node: str, objective: str, actions: list[str], inputs: list[str]) -> AgentPlan:
